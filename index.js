@@ -306,4 +306,4 @@ client.login(TOKEN)
     .catch(err => console.error('❌ KRYTYCZNY BŁĄD LOGOWANIA:', err.message));
 
 app.get('/', (req, res) => res.send('OK'));
-app.listen(process.env.PORT || 3000, () => console.log('🌐 Serwer HTTP aktywny.'));y.'));
+app.listen(process.env.PORT || 3000, () => console.log('🌐 Serwer HTTP aktywny.'));
