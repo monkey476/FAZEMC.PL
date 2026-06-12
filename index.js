@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const express = require('express');
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -70,8 +70,8 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'stworz-konkurs') {
-        // Używamy natychmiastowej odpowiedzi tekstowej, co jest najbardziej stabilną opcją na Renderze
-        await interaction.reply({ content: '⏳ Generowanie konkursu...', ephemeral: true });
+        // Poprawione na najnowszy standard flag zamiast ephemeral: true
+        await interaction.reply({ content: '⏳ Generowanie konkursu...', flags: [MessageFlags.Ephemeral] });
         
         const tytul = interaction.options.getString('tytul');
         const tresc = interaction.options.getString('tresc').replace(/\\n/g, '\n');
@@ -121,7 +121,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'losuj-konkurs' || commandName === 'reroll-konkurs') {
-        await interaction.reply({ content: '⏳ Przetwarzanie losowania...', ephemeral: true });
+        await interaction.reply({ content: '⏳ Przetwarzanie losowania...', flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
         const data = konkursyBaza.get(msgId);
 
@@ -168,7 +168,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'usun-z-konkursu') {
-        await interaction.reply({ content: '⏳ Aktualizacja bazy danych...', ephemeral: true });
+        await interaction.reply({ content: '⏳ Aktualizacja bazy danych...', flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
         const user = interaction.options.getUser('uzytkownik');
         const data = konkursyBaza.get(msgId);
@@ -199,9 +199,9 @@ client.on('interactionCreate', async interaction => {
     const msgId = interaction.message.id;
     const data = konkursyBaza.get(msgId);
 
-    if (!data) return interaction.reply({ content: 'Ten konkurs został już zamknięty.', ephemeral: true });
+    if (!data) return interaction.reply({ content: 'Ten konkurs został już zamknięty.', flags: [MessageFlags.Ephemeral] });
     if (data.uczestnicy.includes(interaction.user.id)) {
-        return interaction.reply({ content: 'Już jesteś zapisany do tego losowania!', ephemeral: true });
+        return interaction.reply({ content: 'Już jesteś zapisany do tego losowania!', flags: [MessageFlags.Ephemeral] });
     }
 
     data.uczestnicy.push(interaction.user.id);
@@ -212,7 +212,7 @@ client.on('interactionCreate', async interaction => {
         .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
 
     await interaction.message.edit({ embeds: [edytowanyEmbed] });
-    await interaction.reply({ content: '🎉 Pomyślnie dopisano Cię do listy uczestników!', ephemeral: true });
+    await interaction.reply({ content: '🎉 Pomyślnie dopisano Cię do listy uczestników!', flags: [MessageFlags.Ephemeral] });
 });
 
 client.login(TOKEN);
