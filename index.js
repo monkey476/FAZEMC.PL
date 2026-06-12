@@ -1,13 +1,13 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
-const Jsoning = require('jsoning');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const TARGET_CHANNEL_ID = '1291748341331529789';
 
-const db = new Jsoning('konkursy_db.json');
-const app = express();
+// Bezpieczna baza danych w pamięci bota (brak błędów plikowych na Renderze!)
+const konkursyBaza = new Map();
 
+const app = express();
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -16,7 +16,6 @@ const client = new Client({
     ]
 });
 
-// Rejestracja bezpiecznych komend
 const commands = [
     new SlashCommandBuilder()
         .setName('stworz-konkurs')
@@ -60,13 +59,12 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik do usunięcia').setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-// Powrót do klasycznego i stabilnego zapisu ready
 client.once('ready', async () => {
-    console.log(`🚀 Bot FAZEMC.PL działa poprawnie!`);
+    console.log(`🚀 Bot FAZEMC.PL działa!`);
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Komendy konkursowe zarejestrowane pomyślnie!');
+        console.log('Komendy załadowane!');
     } catch (err) { console.error(err); }
 });
 
@@ -90,7 +88,7 @@ client.on('interactionCreate', async interaction => {
         const obrazek = interaction.options.getString('obrazek');
 
         const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
-        if (!kanal) return interaction.editReply('Nie odnaleziono docelowego kanału.');
+        if (!kanal) return interaction.editReply('Nie odnaleziono kanału.');
 
         const embed = new EmbedBuilder()
             .setTitle(tytul)
@@ -107,7 +105,7 @@ client.on('interactionCreate', async interaction => {
 
         const msg = await kanal.send({ embeds: [embed], components: [row] });
 
-        await db.set(msg.id, {
+        konkursyBaza.set(msg.id, {
             guildId: interaction.guildId,
             rolaId: rola.id,
             ilosc: zwycięzcyIlosc,
@@ -116,13 +114,13 @@ client.on('interactionCreate', async interaction => {
             embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
         });
 
-        await interaction.editReply(`Konkurs utworzony! ID wiadomości: \`${msg.id}\``);
+        await interaction.editReply(`Konkurs utworzony! ID: \`${msg.id}\``);
     }
 
     if (commandName === 'losuj-konkurs' || commandName === 'reroll-konkurs') {
         await interaction.deferReply({ ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
-        const data = await db.get(msgId);
+        const data = konkursyBaza.get(msgId);
 
         if (!data) return interaction.editReply('Nie znaleziono takiego konkursu.');
         if (data.uczestnicy.length === 0) return interaction.editReply('Brak uczestników.');
@@ -151,7 +149,7 @@ client.on('interactionCreate', async interaction => {
 
             let nowiZwyciezcy = commandName === 'reroll-konkurs' ? [...data.zwyciezcy, ...wylosowani] : wylosowani;
             data.zwyciezcy = nowiZwyciezcy;
-            await db.set(msgId, data);
+            konkursyBaza.set(msgId, data);
 
             const wzmianki = wylosowani.map(id => `<@${id}>`).join(', ');
             const staryEmbed = msg.embeds[0];
@@ -160,23 +158,23 @@ client.on('interactionCreate', async interaction => {
 
             await msg.edit({ embeds: [edytowanyEmbed], components: [] });
             await kanal.send(`🎉 **Wydarzenie zakończone!**\n${commandName === 'reroll-konkurs' ? '🔄 Reroll:' : '🏆 Zwycięzcy:'} ${wzmianki}\nRanga została nadana!`);
-            await interaction.editReply('Gotowe!');
+            await interaction.editReply('Wylosowano!');
         } catch (err) {
-            await interaction.editReply('Błąd edycji wiadomości.');
+            await interaction.editReply('Błąd edycji.');
         }
     }
 
     if (commandName === 'usun-z-konkursu') {
         const msgId = interaction.options.getString('id_wiadomosci');
         const user = interaction.options.getUser('uzytkownik');
-        const data = await db.get(msgId);
+        const data = konkursyBaza.get(msgId);
 
         if (!data || !data.uczestnicy.includes(user.id)) {
-            return interaction.reply({ content: 'Błąd danych.', ephemeral: true });
+            return interaction.reply({ content: 'Brak gracza na liście.', ephemeral: true });
         }
 
         data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
-        await db.set(msgId, data);
+        konkursyBaza.set(msgId, data);
 
         try {
             const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
@@ -187,7 +185,7 @@ client.on('interactionCreate', async interaction => {
             await msg.edit({ embeds: [edytowanyEmbed] });
         } catch(e){}
 
-        await interaction.reply({ content: `Usunięto gracza z listy.`, ephemeral: true });
+        await interaction.reply({ content: `Usunięto gracza.`, ephemeral: true });
     }
 });
 
@@ -195,22 +193,22 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isButton() || interaction.customId !== 'join_konkurs') return;
 
     const msgId = interaction.message.id;
-    const data = await db.get(msgId);
+    const data = konkursyBaza.get(msgId);
 
-    if (!data) return interaction.reply({ content: 'Nieaktywne.', ephemeral: true });
+    if (!data) return interaction.reply({ content: 'Konkurs przedawniony.', ephemeral: true });
     if (data.uczestnicy.includes(interaction.user.id)) {
-        return interaction.reply({ content: 'Już tu jesteś!', ephemeral: true });
+        return interaction.reply({ content: 'Już bierzesz udział!', ephemeral: true });
     }
 
     data.uczestnicy.push(interaction.user.id);
-    await db.set(msgId, data);
+    konkursyBaza.set(msgId, data);
 
     const staryEmbed = interaction.message.embeds[0];
     const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
         .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
 
     await interaction.message.edit({ embeds: [edytowanyEmbed] });
-    await interaction.reply({ content: '🎉 Zapisano!', ephemeral: true });
+    await interaction.reply({ content: '🎉 Zapisano Cię do konkursu!', ephemeral: true });
 });
 
 client.login(TOKEN);
