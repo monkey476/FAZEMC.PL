@@ -2,8 +2,6 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuild
 const express = require('express');
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const TARGET_CHANNEL_ID = '1291748341331529789';
-
 const konkursyBaza = new Map();
 const app = express();
 
@@ -18,7 +16,7 @@ const client = new Client({
 const commands = [
     new SlashCommandBuilder()
         .setName('stworz-konkurs')
-        .setDescription('Tworzy nowy konkurs i wysyła go na dedykowany kanał')
+        .setDescription('Tworzy nowy konkurs na tym kanale')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł embeda').setRequired(true))
         .addStringOption(o => o.setName('tresc').setDescription('Treść embeda (użyj \\n dla nowej linii)').setRequired(true))
@@ -32,8 +30,8 @@ const commands = [
                 { name: 'Zielony (Success)', value: 'Success' },
                 { name: 'Czerwony (Danger)', value: 'Danger' }
             ))
-        .addStringOption(o => o.setName('data_rozpoczecia').setDescription('Data rozpoczęcia (np. 11.06.2026 22:00)').setRequired(true))
-        .addStringOption(o => o.setName('data_zakonczenia').setDescription('Data zakończenia (np. 18.06.2026 22:00)').setRequired(true))
+        .addStringOption(o => o.setName('data_rozpoczecia').setDescription('Data rozpoczęcia (np. 12.06.2026 13:00)').setRequired(true))
+        .addStringOption(o => o.setName('data_zakonczenia').setDescription('Data zakończenia (np. 19.06.2026 18:00)').setRequired(true))
         .addRoleOption(o => o.setName('rola').setDescription('Rola do wygrania').setRequired(true))
         .addIntegerOption(o => o.setName('zwyciezcy').setDescription('Liczba zwycięzców').setRequired(true))
         .addStringOption(o => o.setName('obrazek').setDescription('Link URL do obrazka/gifa w embedzie').setRequired(false)),
@@ -63,7 +61,7 @@ client.once('ready', async () => {
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Komendy konkursowe zarejestrowane pomyślnie!');
+        console.log('Komendy załadowane!');
     } catch (err) { console.error(err); }
 });
 
@@ -72,6 +70,7 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'stworz-konkurs') {
+        // Natychmiast informujemy Discorda, że pracujemy (zapobiega błędowi "Aplikacja nie reaguje")
         await interaction.deferReply({ ephemeral: true });
         
         const tytul = interaction.options.getString('tytul');
@@ -86,8 +85,8 @@ client.on('interactionCreate', async interaction => {
         const zwycięzcyIlosc = interaction.options.getInteger('zwyciezcy');
         const obrazek = interaction.options.getString('obrazek');
 
-        const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
-        if (!kanal) return interaction.editReply('Nie odnaleziono docelowego kanału.');
+        // Pobieramy kanał, na którym UŻYTO komendy (koniec problemów z ID!)
+        const kanal = interaction.channel;
 
         const embed = new EmbedBuilder()
             .setTitle(tytul)
@@ -102,18 +101,24 @@ client.on('interactionCreate', async interaction => {
             new ButtonBuilder().setCustomId('join_konkurs').setLabel(nazwa_przycisku).setStyle(btnStyle)
         );
 
-        const msg = await kanal.send({ embeds: [embed], components: [row] });
+        try {
+            const msg = await kanal.send({ embeds: [embed], components: [row] });
 
-        konkursyBaza.set(msg.id, {
-            guildId: interaction.guildId,
-            rolaId: rola.id,
-            ilosc: zwycięzcyIlosc,
-            uczestnicy: [],
-            zwyciezcy: [],
-            embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
-        });
+            konkursyBaza.set(msg.id, {
+                guildId: interaction.guildId,
+                kanalId: kanal.id,
+                rolaId: rola.id,
+                ilosc: zwycięzcyIlosc,
+                uczestnicy: [],
+                zwyciezcy: [],
+                embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
+            });
 
-        await interaction.editReply(`Konkurs utworzony! ID wiadomości: \`${msg.id}\``);
+            await interaction.editReply(`Konkurs pomyślnie utworzony! ID wiadomości: \`${msg.id}\``);
+        } catch (error) {
+            console.error(error);
+            await interaction.editReply('Błąd: Bot nie ma uprawnień do pisania na tym kanale lub wysyłania embedów!');
+        }
     }
 
     if (commandName === 'losuj-konkurs' || commandName === 'reroll-konkurs') {
@@ -122,7 +127,7 @@ client.on('interactionCreate', async interaction => {
         const data = konkursyBaza.get(msgId);
 
         if (!data) return interaction.editReply('Nie znaleziono takiego konkursu.');
-        if (data.uczestnicy.length === 0) return interaction.editReply('Brak uczestników w bazie.');
+        if (data.uczestnicy.length === 0) return interaction.editReply('Brak uczestników.');
 
         const wylosowani = [];
         const kopiaUczestnikow = [...data.uczestnicy];
@@ -134,7 +139,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         const guild = client.guilds.cache.get(data.guildId);
-        const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
+        const kanal = client.channels.cache.get(data.kanalId || interaction.channelId);
 
         try {
             const msg = await kanal.messages.fetch(msgId);
@@ -159,7 +164,7 @@ client.on('interactionCreate', async interaction => {
             await kanal.send(`🎉 **Wydarzenie zakończone!**\n${commandName === 'reroll-konkurs' ? '🔄 Reroll nowego zwycięzcy:' : '🏆 Zwycięzcy konkursu:'} ${wzmianki}\nRanga została przyznana automatycznie!`);
             await interaction.editReply('Losowanie wykonane pomyślnie!');
         } catch (err) {
-            await interaction.editReply('Wystąpił błąd podczas edycji wiadomości.');
+            await interaction.editReply('Wystąpił błąd podczas edycji wiadomości lub pobierania kanału.');
         }
     }
 
@@ -169,14 +174,14 @@ client.on('interactionCreate', async interaction => {
         const data = konkursyBaza.get(msgId);
 
         if (!data || !data.uczestnicy.includes(user.id)) {
-            return interaction.reply({ content: 'Nie znaleziono takiego gracza na liście zapisu.', ephemeral: true });
+            return interaction.reply({ content: 'Nie znaleziono takiego gracza na liście.', ephemeral: true });
         }
 
         data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
         konkursyBaza.set(msgId, data);
 
         try {
-            const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
+            const kanal = client.channels.cache.get(data.kanalId || interaction.channelId);
             const msg = await kanal.messages.fetch(msgId);
             const staryEmbed = msg.embeds[0];
             const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
@@ -194,9 +199,9 @@ client.on('interactionCreate', async interaction => {
     const msgId = interaction.message.id;
     const data = konkursyBaza.get(msgId);
 
-    if (!data) return interaction.reply({ content: 'Ten konkurs już nie istnieje lub został zamknięty.', ephemeral: true });
+    if (!data) return interaction.reply({ content: 'Ten konkurs wygasł.', ephemeral: true });
     if (data.uczestnicy.includes(interaction.user.id)) {
-        return interaction.reply({ content: 'Już jesteś na liście uczestników!', ephemeral: true });
+        return interaction.reply({ content: 'Już jesteś zapisany!', ephemeral: true });
     }
 
     data.uczestnicy.push(interaction.user.id);
@@ -207,7 +212,7 @@ client.on('interactionCreate', async interaction => {
         .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
 
     await interaction.message.edit({ embeds: [edytowanyEmbed] });
-    await interaction.reply({ content: '🎉 Zostałeś pomyślnie zapisany do losowania!', ephemeral: true });
+    await interaction.reply({ content: '🎉 Zostałeś pomyślnie zapisany!', ephemeral: true });
 });
 
 client.login(TOKEN);
