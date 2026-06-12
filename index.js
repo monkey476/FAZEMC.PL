@@ -1,10 +1,7 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
 const express = require('express');
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const BAZA_PATH = path.join(__dirname, 'konkursy_baza.json');
 const app = express();
 
 // --- PEŁNA KONFIGURACJA KANAŁÓW ---
@@ -12,20 +9,8 @@ const KANAL_KONKURSY_ID = '1291748341331529789';
 const KANAL_LOGI_ID = '1291748341331529789';     
 const KANAL_POWITANIA_ID = '1291748341331529789'; 
 
-let konkursyBaza = new Map();
-
-if (fs.existsSync(BAZA_PATH)) {
-    try {
-        const dane = JSON.parse(fs.readFileSync(BAZA_PATH, 'utf8'));
-        konkursyBaza = new Map(Object.entries(dane));
-        console.log('📦 Baza danych konkursów wczytana.');
-    } catch (e) { console.error(e); }
-}
-
-function zapiszBazeDoPliku() {
-    const obiekt = Object.fromEntries(konkursyBaza);
-    fs.writeFileSync(BAZA_PATH, JSON.stringify(obiekt, null, 2), 'utf8');
-}
+// Bezpieczna baza danych działająca w pamięci RAM serwera
+const konkursyBaza = new Map();
 
 const client = new Client({
     intents: [
@@ -87,8 +72,7 @@ const commands = [
 
 client.once('ready', async () => {
     console.log('==================================================');
-    console.log(`🟢 SUKCES: Bot FAZEMC.PL zalogował się do Discorda!`);
-    console.log(`🤖 Nazwa bota: ${client.user.tag}`);
+    console.log(`🟢 SUKCES: Bot FAZEMC.PL działa poprawnie!`);
     console.log('==================================================');
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -113,7 +97,6 @@ client.once('ready', async () => {
     }, 60000);
 });
 
-// Funkcja pomocnicza do wysyłania powitania (żeby nie powtarzać kodu)
 async function wyslijPowitanie(member) {
     const kanalPowitan = client.channels.cache.get(KANAL_POWITANIA_ID);
     if (!kanalPowitan) return console.log('❌ Nie znaleziono kanału powitań.');
@@ -128,7 +111,6 @@ async function wyslijPowitanie(member) {
     await kanalPowitan.send({ content: `✨ Siemanko ${member}!`, embeds: [embedPowitalny] });
 }
 
-// Obsługa normalnego wejścia gracza
 client.on('guildMemberAdd', async member => {
     try {
         await wyslijPowitanie(member);
@@ -141,17 +123,18 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'test-powitanie') {
-        await interaction.reply({ content: '⚙️ Generuję testowe powitanie...', flags: [MessageFlags.Ephemeral] });
+        // Natychmiast informujemy Discorda, że pracujemy (naprawia "Aplikacja nie reaguje")
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         try {
             await wyslijPowitanie(interaction.member);
-            await interaction.editReply({ content: '✅ Testowe powitanie wysłane na skonfigurowany kanał!' });
+            await interaction.editReply({ content: '✅ Testowe powitanie wysłane!' });
         } catch (e) {
             await interaction.editReply({ content: `❌ Błąd testu: ${e.message}` });
         }
     }
 
     if (commandName === 'stworz-konkurs') {
-        await interaction.reply({ content: '⏳ Generowanie nowego konkursu...', flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         
         const tytul = interaction.options.getString('tytul');
         const tresc = interaction.options.getString('tresc').replace(/\\n/g, '\n');
@@ -194,7 +177,6 @@ client.on('interactionCreate', async interaction => {
                 zakonczony: false,
                 embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
             });
-            zapiszBazeDoPliku();
 
             await interaction.editReply({ content: `✅ Konkurs wysłany! ID: \`${msg.id}\`` });
         } catch (error) {
@@ -203,7 +185,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'losuj-konkurs') {
-        await interaction.reply({ content: '⏳ Losowanie...', flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
         if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono konkursu.');
         await uruchomLosowanie(msgId, false);
@@ -211,7 +193,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'reroll-konkurs') {
-        await interaction.reply({ content: '⏳ Trwa reroll...', flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
         if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono podanego ID.');
         await uruchomLosowanie(msgId, true);
@@ -219,7 +201,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'usun-z-konkursu') {
-        await interaction.reply({ content: '⏳ Usuwanie gracza...', flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
         const user = interaction.options.getUser('uzytkownik');
         const data = konkursyBaza.get(msgId);
@@ -230,7 +212,6 @@ client.on('interactionCreate', async interaction => {
 
         data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
         konkursyBaza.set(msgId, data);
-        zapiszBazeDoPliku();
 
         try {
             const kanal = client.channels.cache.get(data.kanalId || KANAL_KONKURSY_ID);
@@ -260,7 +241,6 @@ client.on('interactionCreate', async interaction => {
 
     data.uczestnicy.push(interaction.user.id);
     konkursyBaza.set(msgId, data);
-    zapiszBazeDoPliku();
 
     const staryEmbed = interaction.message.embeds[0];
     const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
@@ -287,13 +267,12 @@ async function uruchomLosowanie(msgId, isReroll = false) {
         }
         data.zakonczony = true;
         konkursyBaza.set(msgId, data);
-        zapiszBazeDoPliku();
         return;
     }
 
     const wylosowani = [];
     const kopiaUczestnikow = [...data.uczestnicy];
-    const ileLosowac = isReroll ? 1 : Math.min(data.ilosc, kopiaUquczestnikow.length);
+    const ileLosowac = isReroll ? 1 : Math.min(data.ilosc, kopiaUczestnikow.length);
 
     for (let i = 0; i < ileLosowac; i++) {
         const index = Math.floor(Math.random() * kopiaUczestnikow.length);
@@ -313,7 +292,6 @@ async function uruchomLosowanie(msgId, isReroll = false) {
     if (!isReroll) data.zakonczony = true;
     
     konkursyBaza.set(msgId, data);
-    zapiszBazeDoPliku();
 
     try {
         const msg = await kanalKonkursy.messages.fetch(msgId);
@@ -330,14 +308,7 @@ async function uruchomLosowanie(msgId, isReroll = false) {
     } catch (err) { console.error(err); }
 }
 
-console.log('⏳ Próba logowania do Discorda...');
-client.login(TOKEN).then(() => {
-    console.log('🔓 Token zarejestrowany poprawnie!');
-}).catch(err => {
-    console.error('❌ BŁĄD LOGOWANIA:', err.message);
-});
+client.login(TOKEN).catch(err => console.error('❌ BŁĄD LOGOWANIA:', err.message));
 
 app.get('/', (req, res) => res.send('OK'));
-app.listen(process.env.PORT || 3000, () => {
-    console.log('🌐 Serwer Web Express uruchomiony.');
-});
+app.listen(process.env.PORT || 3000);
