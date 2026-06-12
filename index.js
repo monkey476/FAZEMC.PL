@@ -57,11 +57,11 @@ const commands = [
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
-    console.log(`🚀 Bot FAZEMC.PL działa poprawnie!`);
+    console.log(`🚀 Bot FAZEMC.PL zalogowany jako ${client.user.tag}`);
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Komendy załadowane!');
+        console.log('Komendy załadowane poprawnie!');
     } catch (err) { console.error(err); }
 });
 
@@ -70,8 +70,8 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'stworz-konkurs') {
-        // Trik z "ephemeral: false" i natychmiastowym zatwierdzeniem zapobiega jakimkolwiek błędom o braku reakcji aplikacji!
-        await interaction.reply({ content: '⏳ Generowanie fioletowego konkursu... Proszę czekać.', ephemeral: true });
+        // Używamy natychmiastowej odpowiedzi tekstowej, co jest najbardziej stabilną opcją na Renderze
+        await interaction.reply({ content: '⏳ Generowanie konkursu...', ephemeral: true });
         
         const tytul = interaction.options.getString('tytul');
         const tresc = interaction.options.getString('tresc').replace(/\\n/g, '\n');
@@ -116,17 +116,17 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({ content: `✅ Konkurs pomyślnie utworzony! ID wiadomości: \`${msg.id}\`` });
         } catch (error) {
             console.error(error);
-            await interaction.editReply({ content: '❌ Błąd: Bot nie ma uprawnień do wysyłania embedów na tym kanale!' });
+            await interaction.editReply({ content: '❌ Wystąpił problem przy wysyłaniu wiadomości na tym kanale.' });
         }
     }
 
     if (commandName === 'losuj-konkurs' || commandName === 'reroll-konkurs') {
-        await interaction.reply({ content: '⏳ Losowanie w toku...', ephemeral: true });
+        await interaction.reply({ content: '⏳ Przetwarzanie losowania...', ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
         const data = konkursyBaza.get(msgId);
 
-        if (!data) return interaction.editReply('Nie znaleziono takiego konkursu.');
-        if (data.uczestnicy.length === 0) return interaction.editReply('Brak uczestników.');
+        if (!data) return interaction.editReply('Nie odnaleziono takiego konkursu.');
+        if (data.uczestnicy.length === 0) return interaction.editReply('Brak chętnych do wylosowania.');
 
         const wylosowani = [];
         const kopiaUczestnikow = [...data.uczestnicy];
@@ -160,21 +160,21 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n\n**🎉 ZWYCIĘZCY:** ${nowiZwyciezcy.map(id => `<@${id}>`).join(', ')}`);
 
             await msg.edit({ embeds: [edytowanyEmbed], components: [] });
-            await kanal.send(`🎉 **Wydarzenie zakończone!**\n${commandName === 'reroll-konkurs' ? '🔄 Reroll nowego zwycięzcy:' : '🏆 Zwycięzcy konkursu:'} ${wzmianki}\nRanga została przyznana automatycznie!`);
-            await interaction.editReply('Losowanie wykonane pomyślnie!');
+            await kanal.send(`🎉 **Wyniki konkursu!**\n${commandName === 'reroll-konkurs' ? '🔄 Nowy wylosowany zwycięzca:' : '🏆 Gratulacje dla:'} ${wzmianki}\nNagroda została przyznana!`);
+            await interaction.editReply('Losowanie zakończone powodzeniem!');
         } catch (err) {
-            await interaction.editReply('Wystąpił błąd podczas edycji wiadomości.');
+            await interaction.editReply('Wystąpił błąd podczas pobierania lub edycji wiadomości.');
         }
     }
 
     if (commandName === 'usun-z-konkursu') {
-        await interaction.reply({ content: '⏳ Usuwanie gracza...', ephemeral: true });
+        await interaction.reply({ content: '⏳ Aktualizacja bazy danych...', ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
         const user = interaction.options.getUser('uzytkownik');
         const data = konkursyBaza.get(msgId);
 
         if (!data || !data.uczestnicy.includes(user.id)) {
-            return interaction.editReply('Nie znaleziono takiego gracza na liście.');
+            return interaction.editReply('Użytkownik nie znajduje się na liście tego konkursu.');
         }
 
         data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
@@ -189,7 +189,7 @@ client.on('interactionCreate', async interaction => {
             await msg.edit({ embeds: [edytowanyEmbed] });
         } catch(e){}
 
-        await interaction.editReply(`Pomyślnie usunięto gracza z listy.`);
+        await interaction.editReply(`Użytkownik został skreślony z listy.`);
     }
 });
 
@@ -199,9 +199,9 @@ client.on('interactionCreate', async interaction => {
     const msgId = interaction.message.id;
     const data = konkursyBaza.get(msgId);
 
-    if (!data) return interaction.reply({ content: 'Ten konkurs wygasł.', ephemeral: true });
+    if (!data) return interaction.reply({ content: 'Ten konkurs został już zamknięty.', ephemeral: true });
     if (data.uczestnicy.includes(interaction.user.id)) {
-        return interaction.reply({ content: 'Już jesteś zapisany!', ephemeral: true });
+        return interaction.reply({ content: 'Już jesteś zapisany do tego losowania!', ephemeral: true });
     }
 
     data.uczestnicy.push(interaction.user.id);
@@ -212,7 +212,7 @@ client.on('interactionCreate', async interaction => {
         .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
 
     await interaction.message.edit({ embeds: [edytowanyEmbed] });
-    await interaction.reply({ content: '🎉 Zostałeś pomyślnie zapisany!', ephemeral: true });
+    await interaction.reply({ content: '🎉 Pomyślnie dopisano Cię do listy uczestników!', ephemeral: true });
 });
 
 client.login(TOKEN);
