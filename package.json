@@ -6,6 +6,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.53",
     "discord.js": "^14.15.3",
     "express": "^4.19.2"
   }
