@@ -12,12 +12,11 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences
+        GatewayIntentBits.GuildMembers
     ]
 });
 
-// Rejestracja komend slash
+// Rejestracja bezpiecznych komend
 const commands = [
     new SlashCommandBuilder()
         .setName('stworz-konkurs')
@@ -61,19 +60,14 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik do usunięcia').setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-// Zmienione na "clientReady" zgodnie z najnowszym standardem v14/v15
-client.once('clientReady', async (readyClient) => {
-    console.log(`🚀 Bot FAZEMC.PL jest gotowy i działa jako ${readyClient.user.tag}!`);
+// Powrót do klasycznego i stabilnego zapisu ready
+client.once('ready', async () => {
+    console.log(`🚀 Bot FAZEMC.PL działa poprawnie!`);
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
-        await rest.put(Routes.applicationCommands(readyClient.user.id), { body: commands });
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
         console.log('Komendy konkursowe zarejestrowane pomyślnie!');
     } catch (err) { console.error(err); }
-});
-
-// Awaryjny log na wypadek gdyby zwykły start nie odpalił logów
-client.on('shardReady', (shardId) => {
-    console.log(`🔷 Shard ${shardId} jest gotowy!`);
 });
 
 client.on('interactionCreate', async interaction => {
@@ -107,4 +101,119 @@ client.on('interactionCreate', async interaction => {
         if (obrazek) embed.setImage(obrazek);
 
         const btnStyle = ButtonStyle[kolor_przycisku];
-        const row = new ActionRow
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('join_konkurs').setLabel(nazwa_przycisku).setStyle(btnStyle)
+        );
+
+        const msg = await kanal.send({ embeds: [embed], components: [row] });
+
+        await db.set(msg.id, {
+            guildId: interaction.guildId,
+            rolaId: rola.id,
+            ilosc: zwycięzcyIlosc,
+            uczestnicy: [],
+            zwyciezcy: [],
+            embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
+        });
+
+        await interaction.editReply(`Konkurs utworzony! ID wiadomości: \`${msg.id}\``);
+    }
+
+    if (commandName === 'losuj-konkurs' || commandName === 'reroll-konkurs') {
+        await interaction.deferReply({ ephemeral: true });
+        const msgId = interaction.options.getString('id_wiadomosci');
+        const data = await db.get(msgId);
+
+        if (!data) return interaction.editReply('Nie znaleziono takiego konkursu.');
+        if (data.uczestnicy.length === 0) return interaction.editReply('Brak uczestników.');
+
+        const wylosowani = [];
+        const kopiaUczestnikow = [...data.uczestnicy];
+        const ileLosowac = commandName === 'reroll-konkurs' ? 1 : Math.min(data.ilosc, kopiaUczestnikow.length);
+
+        for (let i = 0; i < ileLosowac; i++) {
+            const index = Math.floor(Math.random() * kopiaUczestnikow.length);
+            wylosowani.push(kopiaUczestnikow.splice(index, 1)[0]);
+        }
+
+        const guild = client.guilds.cache.get(data.guildId);
+        const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
+
+        try {
+            const msg = await kanal.messages.fetch(msgId);
+            
+            for (const userId of wylosowani) {
+                try {
+                    const member = await guild.members.fetch(userId);
+                    if (member) await member.roles.add(data.rolaId);
+                } catch (e) {}
+            }
+
+            let nowiZwyciezcy = commandName === 'reroll-konkurs' ? [...data.zwyciezcy, ...wylosowani] : wylosowani;
+            data.zwyciezcy = nowiZwyciezcy;
+            await db.set(msgId, data);
+
+            const wzmianki = wylosowani.map(id => `<@${id}>`).join(', ');
+            const staryEmbed = msg.embeds[0];
+            const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
+                .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n\n**🎉 ZWYCIĘZCY:** ${nowiZwyciezcy.map(id => `<@${id}>`).join(', ')}`);
+
+            await msg.edit({ embeds: [edytowanyEmbed], components: [] });
+            await kanal.send(`🎉 **Wydarzenie zakończone!**\n${commandName === 'reroll-konkurs' ? '🔄 Reroll:' : '🏆 Zwycięzcy:'} ${wzmianki}\nRanga została nadana!`);
+            await interaction.editReply('Gotowe!');
+        } catch (err) {
+            await interaction.editReply('Błąd edycji wiadomości.');
+        }
+    }
+
+    if (commandName === 'usun-z-konkursu') {
+        const msgId = interaction.options.getString('id_wiadomosci');
+        const user = interaction.options.getUser('uzytkownik');
+        const data = await db.get(msgId);
+
+        if (!data || !data.uczestnicy.includes(user.id)) {
+            return interaction.reply({ content: 'Błąd danych.', ephemeral: true });
+        }
+
+        data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
+        await db.set(msgId, data);
+
+        try {
+            const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
+            const msg = await kanal.messages.fetch(msgId);
+            const staryEmbed = msg.embeds[0];
+            const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
+                .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
+            await msg.edit({ embeds: [edytowanyEmbed] });
+        } catch(e){}
+
+        await interaction.reply({ content: `Usunięto gracza z listy.`, ephemeral: true });
+    }
+});
+
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isButton() || interaction.customId !== 'join_konkurs') return;
+
+    const msgId = interaction.message.id;
+    const data = await db.get(msgId);
+
+    if (!data) return interaction.reply({ content: 'Nieaktywne.', ephemeral: true });
+    if (data.uczestnicy.includes(interaction.user.id)) {
+        return interaction.reply({ content: 'Już tu jesteś!', ephemeral: true });
+    }
+
+    data.uczestnicy.push(interaction.user.id);
+    await db.set(msgId, data);
+
+    const staryEmbed = interaction.message.embeds[0];
+    const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
+        .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
+
+    await interaction.message.edit({ embeds: [edytowanyEmbed] });
+    await interaction.reply({ content: '🎉 Zapisano!', ephemeral: true });
+});
+
+client.login(TOKEN);
+
+app.get('/', (req, res) => res.send('OK'));
+app.listen(process.env.PORT || 3000);
