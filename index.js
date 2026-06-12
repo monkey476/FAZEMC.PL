@@ -1,5 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, MessageFlags, AttachmentBuilder } = require('discord.js');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -12,8 +11,6 @@ const app = express();
 const KANAL_KONKURSY_ID = '1291748341331529789'; 
 const KANAL_LOGI_ID = '1291748341331529789';     
 const KANAL_POWITANIA_ID = '1291748341331529789'; 
-
-const BACKGROUND_URL = 'https://i.ibb.co/3mYmGvN/enderman-welcome.png';
 
 let konkursyBaza = new Map();
 
@@ -91,10 +88,9 @@ client.once('ready', async () => {
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('⚡ Wszystkie komendy zostały pomyślnie zarejestrowane na Discordzie!');
+        console.log('⚡ Wszystkie komendy zostały zarejestrowane!');
     } catch (err) { console.error(err); }
 
-    // Pętla sprawdzająca czas automatycznego zakończenia konkursu
     setInterval(async () => {
         const teraz = new Date();
         for (const [msgId, data] of konkursyBaza.entries()) {
@@ -107,47 +103,26 @@ client.once('ready', async () => {
                 if (teraz >= dataKonwersji) {
                     await uruchomLosowanie(msgId, false);
                 }
-            } catch (e) { console.error('Błąd pętli czasowej:', e); }
+            } catch (e) { console.error(e); }
         }
     }, 60000);
 });
 
-// ================= DYNAMICZNY GENERATOR POWITAŃ PROSTO Z ENDU =================
+// ================= CZYSTE POWITANIE TEKSTOWE (BEZ OBRAZKÓW) =================
 client.on('guildMemberAdd', async member => {
     const kanalPowitan = client.channels.cache.get(KANAL_POWITANIA_ID);
     if (!kanalPowitan) return;
 
     try {
-        const canvas = createCanvas(1200, 400);
-        const ctx = canvas.getContext('2d');
-        const background = await loadImage(BACKGROUND_URL);
-        ctx.drawImage(background, 0, 0, 1200, 400);
+        const embedPowitalny = new EmbedBuilder()
+            .setTitle('👋 Nowy gracz na pokładzie!')
+            .setDescription(`Witaj **${member.user.username}** na serwerze **FAZEMC.PL**!\n\nŻyczymy miłej zabawy! Pamiętaj, aby zerknąć na kanał z konkursami. 🔥`)
+            .setColor('#CFA1ED')
+            .setThumbnail(member.user.displayAvatarURL({ extension: 'png', size: 128 }))
+            .setTimestamp();
 
-        const avatarURL = member.user.displayAvatarURL({ extension: 'png', size: 256 });
-        const avatarImage = await loadImage(avatarURL);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(600, 238, 54, 0, Math.PI * 2, true); 
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(avatarImage, 546, 184, 108, 108);
-        ctx.restore();
-
-        ctx.font = 'bold 34px sans-serif';
-        ctx.fillStyle = '#FFFFFF';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-        ctx.shadowBlur = 5;
-        ctx.fillText(member.user.username, 600, 335);
-
-        ctx.font = '20px sans-serif';
-        ctx.fillStyle = '#CFA1ED';
-        ctx.fillText('Witaj na serwerze FAZEMC.PL', 600, 365);
-
-        const attachment = new AttachmentBuilder(await canvas.encode('png'), { name: `welcome-${member.user.id}.png` });
-        await kanalPowitan.send({ content: `👋 Witamy na pokładzie ${member}!`, files: [attachment] });
-    } catch (err) { console.error(err); }
+        await kanalPowitan.send({ content: `✨ Siemanko ${member}!`, embeds: [embedPowitalny] });
+    } catch (err) { console.error('Błąd powitania:', err); }
 });
 
 // ================= MECHANIKA OBSŁUGI KONKURSÓW =================
@@ -261,7 +236,7 @@ client.on('interactionCreate', async interaction => {
             });
             zapiszBazeDoPliku();
 
-            await interaction.editReply({ content: `✅ Konkurs wysłany na kanał <#${KANAL_KONKURSY_ID}>! ID: \`${msg.id}\`` });
+            await interaction.editReply({ content: `✅ Konkurs wysłany! ID: \`${msg.id}\`` });
         } catch (error) {
             await interaction.editReply({ content: '❌ Błąd przy wysyłaniu embedu.' });
         }
@@ -337,7 +312,7 @@ client.on('interactionCreate', async interaction => {
 
 console.log('⏳ Próba logowania do Discorda...');
 client.login(TOKEN).then(() => {
-    console.log('🔓 Token zaakceptowany przez Discord API!');
+    console.log('🔓 Token zarejestrowany poprawnie!');
 }).catch(err => {
     console.error('❌ BŁĄD LOGOWANIA:', err.message);
 });
