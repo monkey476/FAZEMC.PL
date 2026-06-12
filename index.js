@@ -1,23 +1,28 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const app = express();
 
+// =================================================================
+// ⚙️ TWOJA KONFIGURACJA ⚙️
 const GUILD_ID = '1285980506474680401'; 
 const KANAL_KONKURSY_ID = '1291748341331529789'; 
 const KANAL_POWITANIA_ID = '1291077819954364457'; 
 const KANAL_LOGI_ID = '1483940235472666754'; 
+// =================================================================
 
 const konkursyBaza = new Map();
 
+// Wymuszenie v10 rest globalnie w kliencie bota
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent
-    ]
+    ],
+    rest: { version: '10' }
 });
 
 const commands = [
@@ -74,9 +79,7 @@ client.once('ready', async () => {
     console.log('==================================================');
     
     try {
-        // Zaktualizowana wersja API do obsługi nowych botów
         const rest = new REST({ version: '10' }).setToken(TOKEN);
-        
         await rest.put(
             Routes.applicationGuildCommands(client.user.id, GUILD_ID),
             { body: commands }
@@ -126,7 +129,7 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'test-powitanie') {
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ ephemeral: true });
         try {
             await wyslijPowitanie(interaction.member);
             await interaction.editReply({ content: '✅ Testowe powitanie wysłane!' });
@@ -136,7 +139,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'stworz-konkurs') {
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ ephemeral: true });
         
         const tytul = interaction.options.getString('tytul');
         const tresc = interaction.options.getString('tresc').replace(/\\n/g, '\n');
@@ -185,7 +188,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'losuj-konkurs') {
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
         if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono konkursu.');
         await uruchomLosowanie(msgId, false);
@@ -193,7 +196,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'reroll-konkurs') {
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
         if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono podanego ID.');
         await uruchomLosowanie(msgId, true);
@@ -201,7 +204,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'usun-z-konkursu') {
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        await interaction.deferReply({ ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
         const user = interaction.options.getUser('uzytkownik');
         const data = konkursyBaza.get(msgId);
@@ -231,8 +234,8 @@ client.on('interactionCreate', async interaction => {
     const msgId = interaction.message.id;
     const data = konkursyBaza.get(msgId);
 
-    if (!data || data.zakonczony) return interaction.reply({ content: 'Ten konkurs dobiegł już końca.', flags: [MessageFlags.Ephemeral] });
-    if (data.uczestnicy.includes(interaction.user.id)) return interaction.reply({ content: 'Jesteś już zapisany!', flags: [MessageFlags.Ephemeral] });
+    if (!data || data.zakonczony) return interaction.reply({ content: 'Ten konkurs dobiegł już końca.', ephemeral: true });
+    if (data.uczestnicy.includes(interaction.user.id)) return interaction.reply({ content: 'Jesteś już zapisany!', ephemeral: true });
 
     data.uczestnicy.push(interaction.user.id);
     konkursyBaza.set(msgId, data);
@@ -242,7 +245,7 @@ client.on('interactionCreate', async interaction => {
         .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
 
     await interaction.message.edit({ embeds: [edytowanyEmbed] });
-    await interaction.reply({ content: `🎉 Zostałeś zapisany! Jesteś ${data.uczestnicy.length} na liście.`, flags: [MessageFlags.Ephemeral] });
+    await interaction.reply({ content: `🎉 Zostałeś zapisany! Jesteś ${data.uczestnicy.length} na liście.`, ephemeral: true });
 });
 
 async function uruchomLosowanie(msgId, isReroll = false) {
@@ -301,11 +304,10 @@ async function uruchomLosowanie(msgId, isReroll = false) {
     } catch (err) { console.error(err); }
 }
 
-// Bezpieczny blok logowania, który zawsze rzuci jasny błąd w konsoli Rendera, jeśli token jest zły
-console.log('⏳ Uruchamiam logowanie bota...');
+console.log('⏳ Próba logowania bota do Discord API...');
 client.login(TOKEN)
-    .then(() => console.log('🔓 Połączenie z Discord API nawiązane!'))
+    .then(() => console.log('🔓 Połączenie nawiązane pomyślnie!'))
     .catch(err => console.error('❌ KRYTYCZNY BŁĄD LOGOWANIA:', err.message));
 
 app.get('/', (req, res) => res.send('OK'));
-app.listen(process.env.PORT || 3000);
+app.listen(process.env.PORT || 3000, () => console.log('🌐 Serwer HTTP aktywny.'));
