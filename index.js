@@ -70,8 +70,8 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'stworz-konkurs') {
-        // Natychmiast informujemy Discorda, że pracujemy (zapobiega błędowi "Aplikacja nie reaguje")
-        await interaction.deferReply({ ephemeral: true });
+        // Trik z "ephemeral: false" i natychmiastowym zatwierdzeniem zapobiega jakimkolwiek błędom o braku reakcji aplikacji!
+        await interaction.reply({ content: '⏳ Generowanie fioletowego konkursu... Proszę czekać.', ephemeral: true });
         
         const tytul = interaction.options.getString('tytul');
         const tresc = interaction.options.getString('tresc').replace(/\\n/g, '\n');
@@ -85,7 +85,6 @@ client.on('interactionCreate', async interaction => {
         const zwycięzcyIlosc = interaction.options.getInteger('zwyciezcy');
         const obrazek = interaction.options.getString('obrazek');
 
-        // Pobieramy kanał, na którym UŻYTO komendy (koniec problemów z ID!)
         const kanal = interaction.channel;
 
         const embed = new EmbedBuilder()
@@ -114,15 +113,15 @@ client.on('interactionCreate', async interaction => {
                 embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
             });
 
-            await interaction.editReply(`Konkurs pomyślnie utworzony! ID wiadomości: \`${msg.id}\``);
+            await interaction.editReply({ content: `✅ Konkurs pomyślnie utworzony! ID wiadomości: \`${msg.id}\`` });
         } catch (error) {
             console.error(error);
-            await interaction.editReply('Błąd: Bot nie ma uprawnień do pisania na tym kanale lub wysyłania embedów!');
+            await interaction.editReply({ content: '❌ Błąd: Bot nie ma uprawnień do wysyłania embedów na tym kanale!' });
         }
     }
 
     if (commandName === 'losuj-konkurs' || commandName === 'reroll-konkurs') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.reply({ content: '⏳ Losowanie w toku...', ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
         const data = konkursyBaza.get(msgId);
 
@@ -164,17 +163,18 @@ client.on('interactionCreate', async interaction => {
             await kanal.send(`🎉 **Wydarzenie zakończone!**\n${commandName === 'reroll-konkurs' ? '🔄 Reroll nowego zwycięzcy:' : '🏆 Zwycięzcy konkursu:'} ${wzmianki}\nRanga została przyznana automatycznie!`);
             await interaction.editReply('Losowanie wykonane pomyślnie!');
         } catch (err) {
-            await interaction.editReply('Wystąpił błąd podczas edycji wiadomości lub pobierania kanału.');
+            await interaction.editReply('Wystąpił błąd podczas edycji wiadomości.');
         }
     }
 
     if (commandName === 'usun-z-konkursu') {
+        await interaction.reply({ content: '⏳ Usuwanie gracza...', ephemeral: true });
         const msgId = interaction.options.getString('id_wiadomosci');
         const user = interaction.options.getUser('uzytkownik');
         const data = konkursyBaza.get(msgId);
 
         if (!data || !data.uczestnicy.includes(user.id)) {
-            return interaction.reply({ content: 'Nie znaleziono takiego gracza na liście.', ephemeral: true });
+            return interaction.editReply('Nie znaleziono takiego gracza na liście.');
         }
 
         data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
@@ -189,7 +189,7 @@ client.on('interactionCreate', async interaction => {
             await msg.edit({ embeds: [edytowanyEmbed] });
         } catch(e){}
 
-        await interaction.reply({ content: `Pomyślnie usunięto gracza z listy.`, ephemeral: true });
+        await interaction.editReply(`Pomyślnie usunięto gracza z listy.`);
     }
 });
 
