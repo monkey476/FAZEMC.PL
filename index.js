@@ -56,7 +56,7 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik do usunięcia').setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`🚀 Bot FAZEMC.PL jest ONLINE jako ${client.user.tag}!`);
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
