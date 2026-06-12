@@ -77,7 +77,12 @@ const commands = [
         .setDescription('Usuwa użytkownika z listy uczestników')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addStringOption(o => o.setName('id_wiadomosci').setDescription('ID wiadomości z konkursem').setRequired(true))
-        .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik do usunięcia').setRequired(true))
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik do usunięcia').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('test-powitanie')
+        .setDescription('Wysyła testową wiadomość powitalną')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
@@ -108,87 +113,42 @@ client.once('ready', async () => {
     }, 60000);
 });
 
-// ================= CZYSTE POWITANIE TEKSTOWE (BEZ OBRAZKÓW) =================
-client.on('guildMemberAdd', async member => {
+// Funkcja pomocnicza do wysyłania powitania (żeby nie powtarzać kodu)
+async function wyslijPowitanie(member) {
     const kanalPowitan = client.channels.cache.get(KANAL_POWITANIA_ID);
-    if (!kanalPowitan) return;
+    if (!kanalPowitan) return console.log('❌ Nie znaleziono kanału powitań.');
 
+    const embedPowitalny = new EmbedBuilder()
+        .setTitle('👋 Nowy gracz na pokładzie!')
+        .setDescription(`Witaj **${member.user.username}** na serwerze **FAZEMC.PL**!\n\nŻyczymy miłej zabawy! Pamiętaj, aby zerknąć na kanał z konkursami. 🔥`)
+        .setColor('#CFA1ED')
+        .setThumbnail(member.user.displayAvatarURL({ extension: 'png', size: 128 }))
+        .setTimestamp();
+
+    await kanalPowitan.send({ content: `✨ Siemanko ${member}!`, embeds: [embedPowitalny] });
+}
+
+// Obsługa normalnego wejścia gracza
+client.on('guildMemberAdd', async member => {
     try {
-        const embedPowitalny = new EmbedBuilder()
-            .setTitle('👋 Nowy gracz na pokładzie!')
-            .setDescription(`Witaj **${member.user.username}** na serwerze **FAZEMC.PL**!\n\nŻyczymy miłej zabawy! Pamiętaj, aby zerknąć na kanał z konkursami. 🔥`)
-            .setColor('#CFA1ED')
-            .setThumbnail(member.user.displayAvatarURL({ extension: 'png', size: 128 }))
-            .setTimestamp();
-
-        await kanalPowitan.send({ content: `✨ Siemanko ${member}!`, embeds: [embedPowitalny] });
+        await wyslijPowitanie(member);
     } catch (err) { console.error('Błąd powitania:', err); }
 });
 
-// ================= MECHANIKA OBSŁUGI KONKURSÓW =================
-async function uruchomLosowanie(msgId, isReroll = false) {
-    const data = konkursyBaza.get(msgId);
-    if (!data || (data.zakonczony && !isReroll)) return;
-
-    const kanalKonkursy = client.channels.cache.get(data.kanalId || KANAL_KONKURSY_ID);
-    const kanalLogi = client.channels.cache.get(KANAL_LOGI_ID);
-
-    if (data.uczestnicy.length === 0) {
-        if (kanalKonkursy) {
-            try {
-                const msg = await kanalKonkursy.messages.fetch(msgId);
-                await msg.edit({ components: [] });
-                await kanalKonkursy.send(`❌ Konkurs \`${msgId}\` dobiegł końca, brak uczestników.`);
-            } catch(e){}
-        }
-        data.zakonczony = true;
-        konkursyBaza.set(msgId, data);
-        zapiszBazeDoPliku();
-        return;
-    }
-
-    const wylosowani = [];
-    const kopiaUczestnikow = [...data.uczestnicy];
-    const ileLosowac = isReroll ? 1 : Math.min(data.ilosc, kopiaUczestnikow.length);
-
-    for (let i = 0; i < ileLosowac; i++) {
-        const index = Math.floor(Math.random() * kopiaUczestnikow.length);
-        wylosowani.push(kopiaUczestnikow.splice(index, 1)[0]);
-    }
-
-    const guild = client.guilds.cache.get(data.guildId);
-    for (const userId of wylosowani) {
-        try {
-            const member = await guild.members.fetch(userId);
-            if (member) await member.roles.add(data.rolaId);
-        } catch (e) {}
-    }
-
-    let nowiZwyciezcy = isReroll ? [...data.zwyciezcy, ...wylosowani] : wylosowani;
-    data.zwyciezcy = nowiZwyciezcy;
-    if (!isReroll) data.zakonczony = true;
-    
-    konkursyBaza.set(msgId, data);
-    zapiszBazeDoPliku();
-
-    try {
-        const msg = await kanalKonkursy.messages.fetch(msgId);
-        const staryEmbed = msg.embeds[0];
-        const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
-            .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n\n**🎉 ZWYCIĘZCY:** ${nowiZwyciezcy.map(id => `<@${id}>`).join(', ')}`);
-
-        await msg.edit({ embeds: [edytowanyEmbed], components: [] });
-        await kanalKonkursy.send(`🎉 **Wyniki konkursu!**\n${isReroll ? '🔄 Nowy wylosowany (Reroll):' : '🏆 Zwycięzcy:'} ${wylosowani.map(id => `<@${id}>`).join(', ')}\nNagrody przyznano automatycznie!`);
-        
-        if (kanalLogi) {
-            await kanalLogi.send(`📝 **[LOGI LOSOWAŃ]** Konkurs \`${msgId}\` rozstrzygnięty. Zwycięzcy: ${wylosowani.map(id => `<@${id}>`).join(', ')}.`);
-        }
-    } catch (err) { console.error(err); }
-}
-
+// ================= MECHANIKA OBSŁUGI INTERAKCJI =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
+
+    if (commandName === 'test-powitanie') {
+        await interaction.reply({ content: '⚙️ Generuję testowe powitanie...', flags: [MessageFlags.Ephemeral] });
+        try {
+            await wyslijPowitanie(interaction.member);
+            await interaction.editReply({ content: '✅ Testowe powitanie wysłane na skonfigurowany kanał!' });
+        } catch (e) {
+            await interaction.editReply({ content: `❌ Błąd testu: ${e.message}` });
+        }
+    }
 
     if (commandName === 'stworz-konkurs') {
         await interaction.reply({ content: '⏳ Generowanie nowego konkursu...', flags: [MessageFlags.Ephemeral] });
@@ -309,6 +269,66 @@ client.on('interactionCreate', async interaction => {
     await interaction.message.edit({ embeds: [edytowanyEmbed] });
     await interaction.reply({ content: `🎉 Zostałeś zapisany! Jesteś ${data.uczestnicy.length} na liście.`, flags: [MessageFlags.Ephemeral] });
 });
+
+async function uruchomLosowanie(msgId, isReroll = false) {
+    const data = konkursyBaza.get(msgId);
+    if (!data || (data.zakonczony && !isReroll)) return;
+
+    const kanalKonkursy = client.channels.cache.get(data.kanalId || KANAL_KONKURSY_ID);
+    const kanalLogi = client.channels.cache.get(KANAL_LOGI_ID);
+
+    if (data.uczestnicy.length === 0) {
+        if (kanalKonkursy) {
+            try {
+                const msg = await kanalKonkursy.messages.fetch(msgId);
+                await msg.edit({ components: [] });
+                await kanalKonkursy.send(`❌ Konkurs \`${msgId}\` dobiegł końca, brak uczestników.`);
+            } catch(e){}
+        }
+        data.zakonczony = true;
+        konkursyBaza.set(msgId, data);
+        zapiszBazeDoPliku();
+        return;
+    }
+
+    const wylosowani = [];
+    const kopiaUczestnikow = [...data.uczestnicy];
+    const ileLosowac = isReroll ? 1 : Math.min(data.ilosc, kopiaUquczestnikow.length);
+
+    for (let i = 0; i < ileLosowac; i++) {
+        const index = Math.floor(Math.random() * kopiaUczestnikow.length);
+        wylosowani.push(kopiaUczestnikow.splice(index, 1)[0]);
+    }
+
+    const guild = client.guilds.cache.get(data.guildId);
+    for (const userId of wylosowani) {
+        try {
+            const member = await guild.members.fetch(userId);
+            if (member) await member.roles.add(data.rolaId);
+        } catch (e) {}
+    }
+
+    let nowiZwyciezcy = isReroll ? [...data.zwyciezcy, ...wylosowani] : wylosowani;
+    data.zwyciezcy = nowiZwyciezcy;
+    if (!isReroll) data.zakonczony = true;
+    
+    konkursyBaza.set(msgId, data);
+    zapiszBazeDoPliku();
+
+    try {
+        const msg = await kanalKonkursy.messages.fetch(msgId);
+        const staryEmbed = msg.embeds[0];
+        const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
+            .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n\n**🎉 ZWYCIĘZCY:** ${nowiZwyciezcy.map(id => `<@${id}>`).join(', ')}`);
+
+        await msg.edit({ embeds: [edytowanyEmbed], components: [] });
+        await kanalKonkursy.send(`🎉 **Wyniki konkursu!**\n${isReroll ? '🔄 Nowy wylosowany (Reroll):' : '🏆 Zwycięzcy:'} ${wylosowani.map(id => `<@${id}>`).join(', ')}\nNagrody przyznano automatycznie!`);
+        
+        if (kanalLogi) {
+            await kanalLogi.send(`📝 **[LOGI LOSOWAŃ]** Konkurs \`${msgId}\` rozstrzygnięty. Zwycięzcy: ${wylosowani.map(id => `<@${id}>`).join(', ')}.`);
+        }
+    } catch (err) { console.error(err); }
+}
 
 console.log('⏳ Próba logowania do Discorda...');
 client.login(TOKEN).then(() => {
