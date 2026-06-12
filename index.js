@@ -4,13 +4,10 @@ const express = require('express');
 const TOKEN = process.env.DISCORD_TOKEN;
 const app = express();
 
-// =================================================================
-// 🔥 TWOJA PEŁNA I POPRAWNA KONFIGURACJA ID SERWERA ORAZ KANAŁÓW 🔥
 const GUILD_ID = '1285980506474680401'; 
 const KANAL_KONKURSY_ID = '1291748341331529789'; 
 const KANAL_POWITANIA_ID = '1291077819954364457'; 
 const KANAL_LOGI_ID = '1483940235472666754'; 
-// =================================================================
 
 const konkursyBaza = new Map();
 
@@ -77,9 +74,9 @@ client.once('ready', async () => {
     console.log('==================================================');
     
     try {
+        // Zaktualizowana wersja API do obsługi nowych botów
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         
-        // Rejestracja natychmiastowa bezpośrednio na Twoim serwerze Discord
         await rest.put(
             Routes.applicationGuildCommands(client.user.id, GUILD_ID),
             { body: commands }
@@ -108,7 +105,7 @@ client.once('ready', async () => {
 
 async function wyslijPowitanie(member) {
     const kanalPowitan = client.channels.cache.get(KANAL_POWITANIA_ID);
-    if (!kanalPowitan) return console.log('❌ Nie znaleziono kanału powitań o ID:', KANAL_POWITANIA_ID);
+    if (!kanalPowitan) return console.log('❌ Nie znaleziono kanału powitań.');
 
     const embedPowitalny = new EmbedBuilder()
         .setTitle('👋 Nowy gracz na pokładzie!')
@@ -132,7 +129,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         try {
             await wyslijPowitanie(interaction.member);
-            await interaction.editReply({ content: '✅ Testowe powitanie wysłane na dedykowany kanał!' });
+            await interaction.editReply({ content: '✅ Testowe powitanie wysłane!' });
         } catch (e) {
             await interaction.editReply({ content: `❌ Błąd: ${e.message}` });
         }
@@ -154,7 +151,7 @@ client.on('interactionCreate', async interaction => {
         const obrazek = interaction.options.getString('obrazek');
 
         const kanalKonkursowy = client.channels.cache.get(KANAL_KONKURSY_ID);
-        if (!kanalKonkursowy) return interaction.editReply('❌ Błąd konfiguracji kanału konkursów.');
+        if (!kanalKonkursowy) return interaction.editReply('❌ Błąd konfiguracji kanału.');
 
         const embed = new EmbedBuilder()
             .setTitle(tytul)
@@ -182,9 +179,6 @@ client.on('interactionCreate', async interaction => {
                 embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
             });
             await interaction.editReply({ content: `✅ Konkurs wysłany! ID: \`${msg.id}\`` });
-            
-            const kanalLogi = client.channels.cache.get(KANAL_LOGI_ID);
-            if (kanalLogi) await kanalLogi.send(`📝 **[LOGI]** Utworzono nowy konkurs o ID: \`${msg.id}\`.`);
         } catch (error) {
             await interaction.editReply({ content: '❌ Błąd przy wysyłaniu embedu.' });
         }
@@ -303,10 +297,15 @@ async function uruchomLosowanie(msgId, isReroll = false) {
         await msg.edit({ embeds: [edytowanyEmbed], components: [] });
         await kanalKonkursy.send(`🎉 **Wyniki konkursu!**\n${isReroll ? '🔄 Nowy wylosowany (Reroll):' : '🏆 Zwycięzcy:'} ${wylosowani.map(id => `<@${id}>`).join(', ')}\nNagrody przyznano automatycznie!`);
         
-        if (kanalLogi) await kanalLogi.send(`📝 **[LOGI LOSOWAŃ]** Konkurs \`${msgId}\` rozstrzygnięty. Wygrali: ${wylosowani.map(id => `<@${id}>`).join(', ')}.`);
+        if (kanalLogi) await kanalLogi.send(`📝 **[LOGI]** Konkurs \`${msgId}\` rozstrzygnięty.`);
     } catch (err) { console.error(err); }
 }
 
-client.login(TOKEN).catch(err => console.error(err.message));
+// Bezpieczny blok logowania, który zawsze rzuci jasny błąd w konsoli Rendera, jeśli token jest zły
+console.log('⏳ Uruchamiam logowanie bota...');
+client.login(TOKEN)
+    .then(() => console.log('🔓 Połączenie z Discord API nawiązane!'))
+    .catch(err => console.error('❌ KRYTYCZNY BŁĄD LOGOWANIA:', err.message));
+
 app.get('/', (req, res) => res.send('OK'));
 app.listen(process.env.PORT || 3000);
