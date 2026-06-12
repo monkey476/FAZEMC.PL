@@ -4,10 +4,9 @@ const express = require('express');
 const TOKEN = process.env.DISCORD_TOKEN;
 const TARGET_CHANNEL_ID = '1291748341331529789';
 
-// Bezpieczna baza danych w pamięci bota (brak błędów plikowych na Renderze!)
 const konkursyBaza = new Map();
-
 const app = express();
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -60,11 +59,11 @@ const commands = [
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
-    console.log(`🚀 Bot FAZEMC.PL działa!`);
+    console.log(`🚀 Bot FAZEMC.PL działa poprawnie!`);
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Komendy załadowane!');
+        console.log('Komendy konkursowe zarejestrowane pomyślnie!');
     } catch (err) { console.error(err); }
 });
 
@@ -88,7 +87,7 @@ client.on('interactionCreate', async interaction => {
         const obrazek = interaction.options.getString('obrazek');
 
         const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
-        if (!kanal) return interaction.editReply('Nie odnaleziono kanału.');
+        if (!kanal) return interaction.editReply('Nie odnaleziono docelowego kanału.');
 
         const embed = new EmbedBuilder()
             .setTitle(tytul)
@@ -114,7 +113,7 @@ client.on('interactionCreate', async interaction => {
             embedData: { tytul, tresc, stopka, kolor, start, koniec, obrazek }
         });
 
-        await interaction.editReply(`Konkurs utworzony! ID: \`${msg.id}\``);
+        await interaction.editReply(`Konkurs utworzony! ID wiadomości: \`${msg.id}\``);
     }
 
     if (commandName === 'losuj-konkurs' || commandName === 'reroll-konkurs') {
@@ -123,7 +122,7 @@ client.on('interactionCreate', async interaction => {
         const data = konkursyBaza.get(msgId);
 
         if (!data) return interaction.editReply('Nie znaleziono takiego konkursu.');
-        if (data.uczestnicy.length === 0) return interaction.editReply('Brak uczestników.');
+        if (data.uczestnicy.length === 0) return interaction.editReply('Brak uczestników w bazie.');
 
         const wylosowani = [];
         const kopiaUczestnikow = [...data.uczestnicy];
@@ -157,10 +156,10 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n\n**🎉 ZWYCIĘZCY:** ${nowiZwyciezcy.map(id => `<@${id}>`).join(', ')}`);
 
             await msg.edit({ embeds: [edytowanyEmbed], components: [] });
-            await kanal.send(`🎉 **Wydarzenie zakończone!**\n${commandName === 'reroll-konkurs' ? '🔄 Reroll:' : '🏆 Zwycięzcy:'} ${wzmianki}\nRanga została nadana!`);
-            await interaction.editReply('Wylosowano!');
+            await kanal.send(`🎉 **Wydarzenie zakończone!**\n${commandName === 'reroll-konkurs' ? '🔄 Reroll nowego zwycięzcy:' : '🏆 Zwycięzcy konkursu:'} ${wzmianki}\nRanga została przyznana automatycznie!`);
+            await interaction.editReply('Losowanie wykonane pomyślnie!');
         } catch (err) {
-            await interaction.editReply('Błąd edycji.');
+            await interaction.editReply('Wystąpił błąd podczas edycji wiadomości.');
         }
     }
 
@@ -170,48 +169,7 @@ client.on('interactionCreate', async interaction => {
         const data = konkursyBaza.get(msgId);
 
         if (!data || !data.uczestnicy.includes(user.id)) {
-            return interaction.reply({ content: 'Brak gracza na liście.', ephemeral: true });
+            return interaction.reply({ content: 'Nie znaleziono takiego gracza na liście zapisu.', ephemeral: true });
         }
 
-        data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
-        konkursyBaza.set(msgId, data);
-
-        try {
-            const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
-            const msg = await kanal.messages.fetch(msgId);
-            const staryEmbed = msg.embeds[0];
-            const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
-                .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
-            await msg.edit({ embeds: [edytowanyEmbed] });
-        } catch(e){}
-
-        await interaction.reply({ content: `Usunięto gracza.`, ephemeral: true });
-    }
-});
-
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isButton() || interaction.customId !== 'join_konkurs') return;
-
-    const msgId = interaction.message.id;
-    const data = konkursyBaza.get(msgId);
-
-    if (!data) return interaction.reply({ content: 'Konkurs przedawniony.', ephemeral: true });
-    if (data.uczestnicy.includes(interaction.user.id)) {
-        return interaction.reply({ content: 'Już bierzesz udział!', ephemeral: true });
-    }
-
-    data.uczestnicy.push(interaction.user.id);
-    konkursyBaza.set(msgId, data);
-
-    const staryEmbed = interaction.message.embeds[0];
-    const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
-        .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
-
-    await interaction.message.edit({ embeds: [edytowanyEmbed] });
-    await interaction.reply({ content: '🎉 Zapisano Cię do konkursu!', ephemeral: true });
-});
-
-client.login(TOKEN);
-
-app.get('/', (req, res) => res.send('OK'));
-app.listen(process.env.PORT || 3000);
+        data.uczestnicy = data
