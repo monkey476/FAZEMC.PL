@@ -172,4 +172,45 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Nie znaleziono takiego gracza na liście zapisu.', ephemeral: true });
         }
 
-        data.uczestnicy = data
+        data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
+        konkursyBaza.set(msgId, data);
+
+        try {
+            const kanal = client.channels.cache.get(TARGET_CHANNEL_ID);
+            const msg = await kanal.messages.fetch(msgId);
+            const staryEmbed = msg.embeds[0];
+            const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
+                .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
+            await msg.edit({ embeds: [edytowanyEmbed] });
+        } catch(e){}
+
+        await interaction.reply({ content: `Pomyślnie usunięto gracza z listy.`, ephemeral: true });
+    }
+});
+
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isButton() || interaction.customId !== 'join_konkurs') return;
+
+    const msgId = interaction.message.id;
+    const data = konkursyBaza.get(msgId);
+
+    if (!data) return interaction.reply({ content: 'Ten konkurs już nie istnieje lub został zamknięty.', ephemeral: true });
+    if (data.uczestnicy.includes(interaction.user.id)) {
+        return interaction.reply({ content: 'Już jesteś na liście uczestników!', ephemeral: true });
+    }
+
+    data.uczestnicy.push(interaction.user.id);
+    konkursyBaza.set(msgId, data);
+
+    const staryEmbed = interaction.message.embeds[0];
+    const edytowanyEmbed = EmbedBuilder.from(staryEmbed)
+        .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
+
+    await interaction.message.edit({ embeds: [edytowanyEmbed] });
+    await interaction.reply({ content: '🎉 Zostałeś pomyślnie zapisany do losowania!', ephemeral: true });
+});
+
+client.login(TOKEN);
+
+app.get('/', (req, res) => res.send('OK'));
+app.listen(process.env.PORT || 3000);
