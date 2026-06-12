@@ -4,17 +4,13 @@ const express = require('express');
 const TOKEN = process.env.DISCORD_TOKEN;
 const app = express();
 
-// =================================================================
-// ⚙️ TWOJA KONFIGURACJA ⚙️
 const GUILD_ID = '1285980506474680401'; 
 const KANAL_KONKURSY_ID = '1291748341331529789'; 
 const KANAL_POWITANIA_ID = '1291077819954364457'; 
 const KANAL_LOGI_ID = '1483940235472666754'; 
-// =================================================================
 
 const konkursyBaza = new Map();
 
-// Wymuszenie v10 rest globalnie w kliencie bota
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -305,13 +301,9 @@ async function uruchomLosowanie(msgId, isReroll = false) {
 }
 
 console.log('⏳ Próba logowania bota do Discord API...');
-
-// Wpisujemy token na sztywno do kodu - Render nie ma tu już nic do gadania
-const MOJ_TOKEN = 'MTQ5NTA2NDI4ODI1NDA5OTUzOA.GINYeE.ffbWNNQTO9EmDx2rc573fqfMY3HMlxONaKh780';
-
-client.login(MOJ_TOKEN)
+client.login(TOKEN)
     .then(() => console.log('🔓 Połączenie nawiązane pomyślnie!'))
     .catch(err => console.error('❌ KRYTYCZNY BŁĄD LOGOWANIA:', err.message));
 
 app.get('/', (req, res) => res.send('OK'));
-app.listen(process.env.PORT || 3000, () => console.log('🌐 Serwer HTTP aktywny.'));
+app.listen(process.env.PORT || 3000, () => console.log('🌐 Serwer HTTP aktywny.'));y.'));
