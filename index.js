@@ -8,24 +8,23 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const BAZA_PATH = path.join(__dirname, 'konkursy_baza.json');
 const app = express();
 
-// --- SZTYWNE KONFIGURACJE KANAŁÓW ---
-const KANAL_KONKURSY_ID = '1291748341331529789'; // Główny kanał na konkursy
-const KANAL_LOGI_ID = '1291748341331529789';     // Kanał na logi losowań (możesz zmienić ID)
-const KANAL_POWITANIA_ID = '1291748341331529789'; // Kanał na powitania (możesz zmienić ID)
+// --- PEŁNA KONFIGURACJA KANAŁÓW ---
+const KANAL_KONKURSY_ID = '1291748341331529789'; 
+const KANAL_LOGI_ID = '1291748341331529789';     
+const KANAL_POWITANIA_ID = '1291748341331529789'; 
 
-// Czysty link do wygenerowanego tła z Endermanem (bez tabelki)
-const BACKGROUND_URL = 'https://images.prodia.xyz/ce52da1e-0899-4cc1-90b4-325f577395ef.png';
+// Nowy, bezpośredni link do czystego tła z Endermanem
+const BACKGROUND_URL = 'https://i.ibb.co/3mYmGvN/enderman-welcome.png';
 
 let konkursyBaza = new Map();
 
-// Odczyt bazy z pliku po restarcie serwera
 if (fs.existsSync(BAZA_PATH)) {
     try {
         const dane = JSON.parse(fs.readFileSync(BAZA_PATH, 'utf8'));
         konkursyBaza = new Map(Object.entries(dane));
-        console.log('📦 Baza danych konkursów została pomyślnie wczytana z pliku!');
+        console.log('📦 Baza danych konkursów wczytana.');
     } catch (e) {
-        console.error('Błąd podczas wczytywania bazy danych:', e);
+        console.error(e);
     }
 }
 
@@ -91,19 +90,14 @@ client.once('ready', async () => {
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Komendy zsynchronizowane z Discordem!');
     } catch (err) { console.error(err); }
 
-    // Automatyczne sprawdzanie dat zakończenia konkursów co 60 sekund
     setInterval(async () => {
         const teraz = new Date();
         for (const [msgId, data] of konkursyBaza.entries()) {
             if (data.zakonczony) continue;
-            
-            // Konwersja formatu DD.MM.YYYY HH:MM na obiekt Date
             const [d, m, y, h, min] = data.embedData.koniec.match(/\d+/g);
             const dataKonwersji = new Date(y, m - 1, d, h, min);
-
             if (teraz >= dataKonwersji) {
                 await uruchomLosowanie(msgId, false);
             }
@@ -111,66 +105,63 @@ client.once('ready', async () => {
     }, 60000);
 });
 
-// ================= SEKCJA SYSTEMU POWITAŃ (CANVAS) =================
+// ================= DYNAMICZNY GENERATOR POWITAŃ PROSTO Z ENDU =================
 client.on('guildMemberAdd', async member => {
     const kanalPowitan = client.channels.cache.get(KANAL_POWITANIA_ID);
     if (!kanalPowitan) return;
 
     try {
-        // Tworzenie płótna o wymiarach baneru (3:1)
         const canvas = createCanvas(1200, 400);
         const ctx = canvas.getContext('2d');
 
-        // Wczytanie i nałożenie tła z Endermanem
         const background = await loadImage(BACKGROUND_URL);
         ctx.drawImage(background, 0, 0, 1200, 400);
 
-        // Pobranie i zaokrąglenie awatara użytkownika
+        // Pobranie awatara wchodzącego użytkownika
         const avatarURL = member.user.displayAvatarURL({ extension: 'png', size: 256 });
         const avatarImage = await loadImage(avatarURL);
 
+        // Rysowanie idealnego koła na awatar pod głównym szyldem
         ctx.save();
         ctx.beginPath();
-        ctx.arc(600, 245, 62, 0, Math.PI * 2, true); // Pozycja w okręgu pod napisem POWITALNIA
+        ctx.arc(600, 238, 54, 0, Math.PI * 2, true); 
         ctx.closePath();
         ctx.clip();
-        ctx.drawImage(avatarImage, 538, 183, 124, 124);
+        ctx.drawImage(avatarImage, 546, 184, 108, 108);
         ctx.restore();
 
-        // Dodanie tekstu: Nick gracza
-        ctx.font = 'bold 36px sans-serif';
+        // Dynamiczny Nick Członka
+        ctx.font = 'bold 34px sans-serif';
         ctx.fillStyle = '#FFFFFF';
         ctx.textAlign = 'center';
         ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-        ctx.shadowBlur = 4;
-        ctx.fillText(member.user.username, 600, 345);
+        ctx.shadowBlur = 5;
+        ctx.fillText(member.user.username, 600, 335);
 
-        // Dodanie tekstu: Podpis powitalny
-        ctx.font = '22px sans-serif';
-        ctx.fillStyle = '#D8A0EC';
-        ctx.fillText('Witaj na serwerze FAZEMC.PL', 600, 375);
+        // Podpis FAZEMC.PL
+        ctx.font = '20px sans-serif';
+        ctx.fillStyle = '#CFA1ED';
+        ctx.fillText('Witaj na serwerze FAZEMC.PL', 600, 365);
 
-        const attachment = new AttachmentBuilder(await canvas.encode('png'), { name: `witamy-${member.user.id}.png` });
-        await kanalPowitan.send({ content: `👋 Witamy nowego gracza ${member}! Zapraszamy do wspólnej zabawy.`, files: [attachment] });
+        const attachment = new AttachmentBuilder(await canvas.encode('png'), { name: `welcome-${member.user.id}.png` });
+        await kanalPowitan.send({ content: `👋 Witamy na pokładzie ${member}!`, files: [attachment] });
     } catch (err) {
-        console.error('Błąd generowania powitania Canvas:', err);
+        console.error('Błąd generatora grafiki:', err);
     }
 });
 
-// ================= SEKCJA KOMEND I OBSŁUGI KONKURSÓW =================
+// ================= MECHANIKA OBSŁUGI KONKURSÓW =================
 async function uruchomLosowanie(msgId, isReroll = false) {
     const data = konkursyBaza.get(msgId);
     if (!data || (data.zakonczony && !isReroll)) return;
 
     const kanalKonkursy = client.channels.cache.get(data.kanalId || KANAL_KONKURSY_ID);
-    const kanalLogi = client.channels.cache.get(KANAL_LOGI_ID);
-
     if (data.uczestnicy.length === 0) {
         if (kanalKonkursy) {
             try {
                 const msg = await kanalKonkursy.messages.fetch(msgId);
                 await msg.edit({ components: [] });
-                await kanalKonkursy.send(`❌ Konkurs o ID \`${msgId}\` zakończył się, lecz nikt nie wziął w nim udziału.`);
+                await kanalKonkursy.send(`❌ Konkurs \`${msgId}\` dobiegł końca, brak uczestników.`);
             } catch(e){}
         }
         data.zakonczony = true;
@@ -210,13 +201,7 @@ async function uruchomLosowanie(msgId, isReroll = false) {
             .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n\n**🎉 ZWYCIĘZCY:** ${nowiZwyciezcy.map(id => `<@${id}>`).join(', ')}`);
 
         await msg.edit({ embeds: [edytowanyEmbed], components: [] });
-        
-        const komunikat = `🎉 **Wyniki konkursu!**\n${isReroll ? '🔄 Wylosowano nowego zwycięzcę w ramach rerollu:' : '🏆 Gratulacje dla zwycięzców:'} ${wylosowani.map(id => `<@${id}>`).join(', ')}\nRanga została przyznana automatycznie!`;
-        await kanalKonkursy.send(komunikat);
-        
-        if (kanalLogi) {
-            await kanalLogi.send(`📝 **[LOGI LOSOWAŃ]** Konkurs \`${msgId}\` został pomyślnie rozstrzygnięty. Zwycięzcy: ${wylosowani.map(id => `<@${id}> (${id})`).join(', ')}.`);
-        }
+        await kanalKonkursy.send(`🎉 **Wyniki konkursu!**\n${isReroll ? '🔄 Nowy wylosowany (Reroll):' : '🏆 Zwycięzcy:'} ${wylosowani.map(id => `<@${id}>`).join(', ')}\nNagrody przyznano automatycznie!`);
     } catch (err) { console.error(err); }
 }
 
@@ -240,7 +225,7 @@ client.on('interactionCreate', async interaction => {
         const obrazek = interaction.options.getString('obrazek');
 
         const kanalKonkursowy = client.channels.cache.get(KANAL_KONKURSY_ID);
-        if (!kanalKonkursowy) return interaction.editReply('❌ Błąd: Nie odnaleziono docelowego kanału konfiguracji.');
+        if (!kanalKonkursowy) return interaction.editReply('❌ Błąd konfiguracji kanałów.');
 
         const embed = new EmbedBuilder()
             .setTitle(tytul)
@@ -270,39 +255,36 @@ client.on('interactionCreate', async interaction => {
             });
             zapiszBazeDoPliku();
 
-            await interaction.editReply({ content: `✅ Konkurs pomyślnie opublikowany na kanale <#${KANAL_KONKURSY_ID}>! ID: \`${msg.id}\`` });
+            await interaction.editReply({ content: `✅ Konkurs wysłany na kanał <#${KANAL_KONKURSY_ID}>! ID: \`${msg.id}\`` });
         } catch (error) {
-            console.error(error);
-            await interaction.editReply({ content: '❌ Wystąpił techniczny błąd podczas wysyłania embedu.' });
+            await interaction.editReply({ content: '❌ Bląd przy wysyłaniu embedu.' });
         }
     }
 
     if (commandName === 'losuj-konkurs') {
-        await interaction.reply({ content: '⏳ Rozpoczynam losowanie...', flags: [MessageFlags.Ephemeral] });
+        await interaction.reply({ content: '⏳ Losowanie...', flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
-        if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono takiego konkursu.');
-        
+        if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono konkursu.');
         await uruchomLosowanie(msgId, false);
-        await interaction.editReply('Konkurs został pomyślnie sfinalizowany.');
+        await interaction.editReply('Losowanie wykonane.');
     }
 
     if (commandName === 'reroll-konkurs') {
-        await interaction.reply({ content: '⏳ Rerollowanie jednego miejsca...', flags: [MessageFlags.Ephemeral] });
+        await interaction.reply({ content: '⏳ Trwa reroll...', flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
-        if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono podanego ID konkursu.');
-
+        if (!konkursyBaza.has(msgId)) return interaction.editReply('Nie odnaleziono podanego ID.');
         await uruchomLosowanie(msgId, true);
-        await interaction.editReply('Nowy zwycięzca został pomyślnie wyłoniony.');
+        await interaction.editReply('Reroll wykonany.');
     }
 
     if (commandName === 'usun-z-konkursu') {
-        await interaction.reply({ content: '⏳ Modyfikacja listy...', flags: [MessageFlags.Ephemeral] });
+        await interaction.reply({ content: '⏳ Usuwanie gracza...', flags: [MessageFlags.Ephemeral] });
         const msgId = interaction.options.getString('id_wiadomosci');
         const user = interaction.options.getUser('uzytkownik');
         const data = konkursyBaza.get(msgId);
 
         if (!data || !data.uczestnicy.includes(user.id)) {
-            return interaction.editReply('Gracz nie uczestniczy w tym konkursie.');
+            return interaction.editReply('Gracz nie znajduje się na liście.');
         }
 
         data.uczestnicy = data.uczestnicy.filter(id => id !== user.id);
@@ -318,11 +300,10 @@ client.on('interactionCreate', async interaction => {
             await msg.edit({ embeds: [edytowanyEmbed] });
         } catch(e){}
 
-        await interaction.editReply(`Pomyślnie usunięto gracza z listy losowania.`);
+        await interaction.editReply(`Użytkownik został skreślony.`);
     }
 });
 
-// Obsługa zapisu przyciskiem (z blokadą wielokrotnego zapisu)
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton() || interaction.customId !== 'join_konkurs') return;
 
@@ -330,12 +311,10 @@ client.on('interactionCreate', async interaction => {
     const data = konkursyBaza.get(msgId);
 
     if (!data || data.zakonczony) {
-        return interaction.reply({ content: 'Ten konkurs został już definitywnie zamknięty.', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: 'Ten konkurs dobiegł już końca.', flags: [MessageFlags.Ephemeral] });
     }
-    
-    // Blokada ponownego zapisu
     if (data.uczestnicy.includes(interaction.user.id)) {
-        return interaction.reply({ content: 'Jesteś już zapisany na liście tego konkursu!', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: 'Jesteś już zapisany!', flags: [MessageFlags.Ephemeral] });
     }
 
     data.uczestnicy.push(interaction.user.id);
@@ -347,10 +326,10 @@ client.on('interactionCreate', async interaction => {
         .setDescription(`${data.embedData.tresc}\n\n**📅 Rozpoczęcie:** ${data.embedData.start}\n**⏳ Zakończenie:** ${data.embedData.koniec}\n**🏆 Nagroda:** <@&${data.rolaId}>\n**👥 Liczba zwycięzców:** ${data.ilosc}\n\n*Uczestników: ${data.uczestnicy.length}*`);
 
     await interaction.message.edit({ embeds: [edytowanyEmbed] });
-    await interaction.reply({ content: `🎉 Pomyślnie dołączyłeś do konkursu! Jesteś obecnie ${data.uczestnicy.length} uczestnikiem.`, flags: [MessageFlags.Ephemeral] });
+    await interaction.reply({ content: `🎉 Zostałeś zapisany! Jesteś ${data.uczestnicy.length} na liście.`, flags: [MessageFlags.Ephemeral] });
 });
 
 client.login(TOKEN);
 
-app.get('/', (req, res) => res.send('System FAZEMC działa produkcyjnie.'));
+app.get('/', (req, res) => res.send('System gotowy.'));
 app.listen(process.env.PORT || 3000);
