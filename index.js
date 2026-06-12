@@ -39,6 +39,7 @@ const client = new Client({
     ]
 });
 
+// ================= REJESTRACJA WSZYSTKICH KOMEND =================
 const commands = [
     new SlashCommandBuilder()
         .setName('stworz-konkurs')
@@ -90,7 +91,7 @@ client.once('ready', async () => {
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('⚡ Komendy ukończone i zarejestrowane!');
+        console.log('⚡ Wszystkie komendy zostały pomyślnie zarejestrowane na Discordzie!');
     } catch (err) { console.error(err); }
 
     // Pętla sprawdzająca czas automatycznego zakończenia konkursu
