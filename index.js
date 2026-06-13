@@ -30,7 +30,7 @@ client.on('messageCreate', async (message) => {
     if (command === 'ping') {
         const reply = await message.reply('Obliczanie pingu...');
         const ping = reply.createdTimestamp - message.createdTimestamp;
-        reply.edit(`Poniedziałek! Ping bota: ${ping}ms | API: ${client.ws.ping}ms`);
+        reply.edit(`Ping bota: ${ping}ms | API: ${client.ws.ping}ms`);
     }
 });
 
