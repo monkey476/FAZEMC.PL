@@ -425,5 +425,4 @@ setInterval(async () => {
     console.log(`Zalogowano jako ${c.user.tag}`);
   });
 
-  client.login(TOKEN).catch(console.error);
-})();
+client.login(TOKEN).catch(() => {});
