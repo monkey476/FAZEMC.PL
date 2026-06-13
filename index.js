@@ -34,6 +34,6 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-client.login(process.env.TOKEN).catch(() => {});
+client.login(TOKEN).catch(() => {});
 
 process.on('unhandledRejection', () => {});
