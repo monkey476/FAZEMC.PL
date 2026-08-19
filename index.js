@@ -13,7 +13,7 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent // Potrzebne, żeby bot widział treść wiadomości
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -21,27 +21,38 @@ const client = new Client({
 client.once('ready', () => {
     console.log(`Zalogowano jako ${client.user.tag}!`);
 
-    // Funkcja do ustawiania statusu
     const updateStatus = () => {
         client.user.setPresence({
             activities: [{ 
-                name: 'FAZEMC.PL', // Twój tekst
-                type: ActivityType.Playing // Może być też: Watching, Listening, Competing
+                name: 'FAZEMC.PL', 
+                type: ActivityType.Playing 
             }],
-            status: 'online' // online, dnd (nie przeszkadzać), idle (zw)
+            status: 'online'
         });
     };
 
-    // Ustawia status od razu po włączeniu
     updateStatus();
-    
-    // Odświeża status co 1 godzinę (dzięki temu na 100% nigdy nie zniknie)
     setInterval(updateStatus, 1000 * 60 * 60); 
 });
 
-// --- 4. TESTOWA KOMENDA ---
+// --- 4. ZABEZPIECZENIE PRZED DODAWANIEM NA INNE SERWERY ---
+client.on('guildCreate', async (guild) => {
+    // TUTAJ PODAJ ID SWOJEGO SERWERA DISCORD (FAZEMC.PL)
+    const allowedGuildId = 'TUTAJ_WKLEJ_ID_SERWERA'; 
+
+    if (guild.id !== allowedGuildId) {
+        console.log(`Bot został dodany na nieautoryzowany serwer: ${guild.name} (${guild.id}). Wychodzę...`);
+        try {
+            await guild.leave();
+            console.log('Pomyślnie opuszczono nieznany serwer.');
+        } catch (error) {
+            console.error('Błąd podczas próby wyjścia z serwera:', error);
+        }
+    }
+});
+
+// --- 5. TESTOWA KOMENDA ---
 client.on('messageCreate', (message) => {
-    // Żeby bot nie odpowiadał sam sobie
     if (message.author.bot) return;
 
     if (message.content === '!ping') {
@@ -49,5 +60,5 @@ client.on('messageCreate', (message) => {
     }
 });
 
-// --- 5. LOGOWANIE DO DISCORDA ---
+// --- 6. LOGOWANIE DO DISCORDA ---
 client.login(process.env.TOKEN);
